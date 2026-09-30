@@ -1,6 +1,7 @@
 # --- Data & images (excluded from version control) ---
 Data/
 Kode/image_export/
+Møder/
 *.pptx
 *.png
 *.jpg
