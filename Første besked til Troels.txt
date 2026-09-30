@@ -1,0 +1,22 @@
+Besked til Troels
+
+Hej Troels, 
+
+Det er Søren. Jeg havde fornøjelsen af at tage dine appstat og appML kurser for lidt tid siden, og nu er jeg i specialekikkerten. 
+
+Jeg er lige kommet hjem fra en udvekslingstur til Tyskland hvor jeg har lavet en masse monster fed fysik-ML, så jeg ville høre om du havde tid til en snak om hvorvidt vi kunne bygge et fedt speciale ? 
+
+Lidt mere detaljeret vis du har tid:
+Jeg taget de fleste af kurserne i Computational Physics, og i Heidelberg tog jeg nogle kurser "Optimization in ML and vision" og noget om "RNN og interpretable ML i forhold til dynamiske systemer". Ud over det har jeg også haft en sund portion condensed matter physics. Mit bachelor project var også decision trees på CERN data over ved Ian Bearden. 
+
+Specielt synes jeg virkelig det vildt spændende når vi begynder og gå ind og kigge i maskineriet og se om vi kan hive noget fed fysik ud, i stedet for bare at approximere. 
+
+Det ideelle speciale ville være med en masse ML og fed kode, med spændende data. Det kunne være fysik/kvante/complex etc, eller noget længere væk, som fx. medicin/økonomi/LLM. Så længe github'en bliver lækker. 
+
+
+Håber det lyder om det kunne give mening med en snak. Let me know :) 
+God weekend !
+
+Søren
+51361906
+kt

@@ -1,0 +1,23 @@
+# --- Data & images (excluded from version control) ---
+Data/
+Kode/image_export/
+*.pptx
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.gif
+*.dv
+*.h5
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/

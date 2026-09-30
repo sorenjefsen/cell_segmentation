@@ -1,0 +1,15 @@
+03. September - First meeting with Adrien
+
+Adrien tried to automate TOPBP1 image analysis, but it didn't really work. He sent me a powerpoint with all the methods he tried. Could be interesting to reseach these methods (non ML)
+
+Emilie is also working on stuff in the same room, and should be nice to talk to.
+
+Han nævnte software:
+Software / foundation
+Cellpose
+napari
+
+
+Lab meeting at 13:00
+Bare snak med alle i gruppen. De spiser tit frokost sammen. 
+Allissandro kunne også være fed. 
