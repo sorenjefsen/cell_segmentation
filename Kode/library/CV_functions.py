@@ -198,15 +198,19 @@ def get_marked_points(th1):
     return marked_points
 
 
-def region_growing(th1, start_points, threshold=0, min_size = 1):
-    """Grow 8-connected foreground regions from candidate seed points.
+def region_growing(th1, start_points=None, threshold=0, min_size = 1):
+    """Group 8-connected foreground pixels into segments.
+
+    Equivalent to a flood-fill/region-growing over all foreground pixels, but
+    implemented with ``cv2.connectedComponents`` instead of a pure-Python
+    pixel-by-pixel loop, which is far faster on large images/crops.
 
     Args:
         th1 (numpy.ndarray): Binary image where foreground pixels are non-zero.
-        start_points (list[tuple[int, int]]): Seed points ``(x, y)`` used to
-            start region expansion.
-        threshold (int, optional): Minimum pixel value required for a neighbor to
-            be included in the region. Defaults to ``0``.
+        start_points: Unused, kept for backward compatibility with callers that
+            pass the result of ``get_marked_points``.
+        threshold (int, optional): Minimum pixel value required for a pixel to
+            be considered foreground. Defaults to ``0``.
         min_size (int, optional): Minimum number of pixels required for a region
             to be kept. Defaults to ``1``.
 
@@ -214,49 +218,15 @@ def region_growing(th1, start_points, threshold=0, min_size = 1):
         list[list[tuple[int, int]]]: A list of segmented regions, where each
         region is a list of ``(x, y)`` pixel coordinates.
     """
+    binary = (th1 > threshold).astype(np.uint8)
+    num_labels, labels = cv2.connectedComponents(binary, connectivity=8)
 
-    visited = set()
     segments = []
-
-    for start_point in start_points:
-        x, y = start_point
-
-        # Skip invalid, background, or already-segmented starting points
-        if (
-            not (0 <= x < th1.shape[1] and 0 <= y < th1.shape[0])
-            or th1[y, x] == 0
-            or start_point in visited
-        ):
+    for label in range(1, num_labels):
+        ys, xs = np.where(labels == label)
+        if len(xs) < min_size:
             continue
-
-        segment = []
-        points_to_try = [start_point]
-        visited.add(start_point)
-
-        while points_to_try:
-            current_x, current_y = points_to_try.pop()
-            segment.append((current_x, current_y))
-
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    if dx == 0 and dy == 0:
-                        continue
-
-                    neighbor = (current_x + dx, current_y + dy)
-                    nx, ny = neighbor
-
-                    if (
-                        0 <= nx < th1.shape[1]
-                        and 0 <= ny < th1.shape[0]
-                        and th1[ny, nx] > threshold
-                        and neighbor not in visited
-                    ):
-                        visited.add(neighbor)
-                        points_to_try.append(neighbor)
-
-        # If segment is too small, skip it
-        if len(segment) >= min_size:
-            segments.append(segment)
+        segments.append(list(zip(xs.tolist(), ys.tolist())))
 
     return segments
 
@@ -428,7 +398,12 @@ def get_bounding_box(original_array, segment, scale = 1):
 # So when given a list of arrays, it should display them with a slider.
 def interactive_plot(
     image_objects,
+    image_objects_2 = None,
     show_bounding_boxes: bool = False,
+    show_axis: bool = False,
+    show_segments: bool = True,
+    show_colorbar: bool = False,
+    show_original: bool = False,
     gif_path: str = None,
     gif_loops: int = 10,
 ):
@@ -437,7 +412,12 @@ def interactive_plot(
 
     Args:
         image_objects (list): List of image objects, each having a display() method.
+        image_objects_2 (list, optional): A second list of image objects, shown
+            side by side with ``image_objects`` at the same index. Defaults to None.
         show_bounding_boxes (bool, optional): Whether to show bounding boxes for segments. Defaults to False.
+        show_colorbar (bool, optional): Whether to show a single shared colorbar. Defaults to False.
+        show_original (bool, optional): If True, add a bottom row showing the
+            unprocessed original image(s) below the segmented image(s). Defaults to False.
         gif_path (str, optional): Path to save the GIF animation. Defaults to None.
         gif_loops (int, optional): Number of loops for the GIF animation. Defaults to 10.
     """
@@ -446,35 +426,63 @@ def interactive_plot(
     from ipywidgets import interact, IntSlider
     from PIL import Image as PILImage, ImageSequence
 
-    def show_image(i):
-        image = image_objects[i]
-        image.display(show_segments=True)
+    num_plots = 2 if image_objects_2 is not None else 1
+    num_rows = 2 if show_original else 1
+    figsize = (6 * num_plots, 5 * num_rows)
 
+    def draw_bounding_boxes_on_axis(axis, image):
+        for segment in image.segments:
+            min_y, max_y, min_x, max_x = segment.get_bounding_box(scale=1)
+            rectangle = plt.Rectangle(
+                (min_x, min_y),
+                max_x - min_x,
+                max_y - min_y,
+                fill=False,
+                edgecolor="red",
+                linewidth=1.5,
+                alpha=0.5,
+            )
+            axis.add_patch(rectangle)
+
+    def show_image(i):
+        plt.figure(figsize=figsize)
+        plt.subplot(num_rows, num_plots, 1)
+        image = image_objects[i]
+        # Only the first subplot gets a colorbar, to avoid one per image.
+        image.display(show_segments=show_segments, show_axis=show_axis, show_colorbar=show_colorbar)
         if show_bounding_boxes:
-            for segment in image.segments:
-                min_y, max_y, min_x, max_x = segment.get_bounding_box(scale=1)
-                rectangle = plt.Rectangle(
-                    (min_x, min_y),
-                    max_x - min_x,
-                    max_y - min_y,
-                    fill=False,
-                    edgecolor="red",
-                    linewidth=1.5,
-                    alpha= 0.5,
-                )
-                plt.gca().add_patch(rectangle)
+            draw_bounding_boxes_on_axis(plt.gca(), image)
+
+        if image_objects_2 is not None:
+            plt.subplot(num_rows, num_plots, 2)
+            image_2 = image_objects_2[i]
+            image_2.display(show_segments=show_segments, show_axis=show_axis, show_colorbar=False)
+            if show_bounding_boxes:
+                draw_bounding_boxes_on_axis(plt.gca(), image_2)
+
+        if show_original:
+            plt.subplot(num_rows, num_plots, num_plots + 1)
+            image.display(show_segments=False, show_axis=show_axis, original=True, show_colorbar=False)
+            if image_objects_2 is not None:
+                plt.subplot(num_rows, num_plots, num_plots + 2)
+                image_2.display(show_segments=False, show_axis=show_axis, original=True, show_colorbar=False)
 
     if gif_path is not None:
-        figure, axis = plt.subplots()
+        num_axes = num_plots
+        figure, axes = plt.subplots(num_rows, num_axes, figsize=figsize, squeeze=False)
 
-        def update_frame(i):
-            image = image_objects[i]
+        def update_axis(axis, image, with_colorbar, original=False):
             axis.clear()
-            axis.imshow(image.array, cmap="gray")
-            axis.set_title(f"{image.image_name} + Time = {image.t}")
+            display_array = image.array_original if original else image.array
+            im = axis.imshow(display_array, cmap="gray")
+            title = f"{image.name} + Time = {image.t}"
+            axis.set_title(f"{title} (original)" if original else title)
             axis.axis("off")
+            # Only draw a colorbar once, to avoid duplicating it per axis.
+            if with_colorbar and show_colorbar:
+                figure.colorbar(im, ax=axis)
 
-            if show_bounding_boxes:
+            if show_bounding_boxes and not original:
                 for segment in image.segments:
                     min_y, max_y, min_x, max_x = segment.get_bounding_box(scale=1)
                     rectangle = plt.Rectangle(
@@ -499,6 +507,15 @@ def interactive_plot(
                         ha="center",
                         va="center",
                     )
+
+        def update_frame(i):
+            update_axis(axes[0][0], image_objects[i], with_colorbar=True)
+            if image_objects_2 is not None:
+                update_axis(axes[0][1], image_objects_2[i], with_colorbar=False)
+            if show_original:
+                update_axis(axes[1][0], image_objects[i], with_colorbar=False, original=True)
+                if image_objects_2 is not None:
+                    update_axis(axes[1][1], image_objects_2[i], with_colorbar=False, original=True)
 
         animation = FuncAnimation(
             figure,

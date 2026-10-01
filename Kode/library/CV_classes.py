@@ -210,9 +210,26 @@ class Picture():
 
         Returns:
             None: Updates ``self.array`` and ``self.offset`` in place.
+
+        Raises:
+            ValueError: If the resulting crop region is empty.
         """
+        height, width = self.array_original.shape[:2]
+        # Clamp defensively: negative indices would otherwise be interpreted as
+        # "from the end" by numpy/Python slicing instead of being clipped to 0.
+        min_y = max(0, min(min_y, height))
+        max_y = max(0, min(max_y, height))
+        min_x = max(0, min(min_x, width))
+        max_x = max(0, min(max_x, width))
+
+        if min_y >= max_y or min_x >= max_x:
+            raise ValueError(
+                f"Invalid crop region: min_y={min_y}, max_y={max_y}, min_x={min_x}, max_x={max_x}"
+            )
+
         self.array = self.array_original[min_y:max_y, min_x:max_x]
         self.offset = (min_x, min_y)
+
 
     def display(self, show_segments: bool = False, original: bool = False, name: str = None, show_axis: bool = True, show_colorbar: bool = True, show_data: bool = False) -> None:
         """Display the current image or the original image.
@@ -748,4 +765,12 @@ class Segment:
         max_y = int(round(center_y + half_size * scale))
         min_x = int(round(center_x - half_size * scale))
         max_x = int(round(center_x + half_size * scale))
+
+        # Clamp to valid bounds: negative indices would otherwise wrap around
+        # instead of clipping when used for array slicing.
+        height, width = self.mask.shape[:2]
+        min_y = max(0, min_y)
+        min_x = max(0, min_x)
+        max_y = min(height, max_y)
+        max_x = min(width, max_x)
         return min_y, max_y, min_x, max_x
