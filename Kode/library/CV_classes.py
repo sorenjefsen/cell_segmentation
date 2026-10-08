@@ -8,29 +8,9 @@ import re
 import sys
 sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Kode\library")
 import CV_functions as CV_func
-import CV_classes as CV_class
 
-class Stack():
-    def __init__(self, path: str):
-        self.path = path
-        self.name = path.split("\\")[-1]
-        self.load_stack(path)
+# OLD VERSION OF CV_classes.py. HERE WE CAN LOAD IMAGES DIRECTLY FROM PATH. 
 
-    def load_stack(self, path: str) -> None:
-        """Load the z-stack from disk.
-
-        Args:
-            path (str): File path to the z-stack.
-
-        Returns:
-            None: Updates ``self.stack``.
-        """
-        data = mrc.load(path)
-        channel_1 = data[::2]
-        channel_1 = channel_1.reshape(-1, 20, *channel_1.shape[1:])
-        channel_2 = data[1::2]
-        channel_2 = channel_2.reshape(-1, 20, *channel_2.shape[1:])
-        self.stack = np.array([channel_1, channel_2])
 
 class Time_series():
     """
@@ -41,26 +21,106 @@ class Time_series():
 
     Takes in the location of the folder containing the time series image files.
     """
-    def __init__(self, path: str):
+    def __init__(self, path: str, run_number, channel):
         self.name = path.split("\\")[-1]
-        self.load_time_series(path)
+        self.load_time_series(path, run_number, channel)
+        self.stacks = np.array([None])
 
-    def load_time_series(self, path: str) -> None:
-        """Load the time series from disk.
+    def load_time_series(self, path: str, run_number, channel) -> None:
+        """
+        Load the time series images from disk for the specified channel. Sets the array
+        ``self.array`` that can be acessed as a 3D numpy array with shape (time, z, height, width).
 
         Args:
-            path (str): File path to the time series.
+            path (str): Path to the folder containing the image files.
+            run_number (str): Run number identifier for the image files.
+            channel (int): Channel number to load (1 or 2).
 
-        Returns:
-            None: Updates ``self.series``.
+        Raises:
+            ValueError: If an invalid channel number is provided.
         """
-        self.images = []
+        path_to_folder = r"C:\Users\sjefs\Desktop\Uni\Speciale\Data\SharangGarudTopBP1data_raw"
+        filename = os.path.join(path_to_folder, f"topbp1-timelapse-jf646-{run_number}_R3D.dv")
 
-        # Find all .npy files in the folder and load them as images
-        for filename in sorted(os.listdir(path)):
-            if filename.endswith(".npy"):
-                self.images.append(np.load(os.path.join(path, filename)))
-        self.images = np.array(self.images)
+        raw_folder = r"C:\Users\sjefs\Desktop\Uni\Speciale\Data\SharangGarudTopBP1data_raw\\"
+
+        filename = f"topbp1-timelapse-jf646-{run_number}_R3D.dv"
+        path_data = raw_folder + filename
+        path_brightfield = raw_folder + filename[:-3] + "_REF.dv"
+
+        image = mrc.load(path_data)
+        image_brightfield = mrc.load(path_brightfield)
+
+        channel_1 = image[::2].reshape(-1, 20, *image.shape[1:])
+        channel_2 = image[1::2].reshape(-1, 20, *image.shape[1:])
+
+
+        if channel == 1:
+            self.array = channel_1
+        elif channel == 2:
+            self.array = channel_2
+        else:
+            raise ValueError("Invalid channel number. Must be 1 or 2.")
+
+
+    def display(self):
+        """Interactive plot of the time series with sliders for time and z."""
+        import matplotlib.pyplot as plt
+        from matplotlib.widgets import Slider
+
+        # The inline backend renders static images, so sliders do nothing.
+        if "inline" in plt.get_backend().lower():
+            try:
+                from IPython import get_ipython
+
+                ip = get_ipython()
+                if ip is not None:
+                    for backend in ("widget", "qt"):
+                        try:
+                            ip.run_line_magic("matplotlib", backend)
+                            break
+                        except Exception:
+                            continue
+            except (ImportError, NameError):
+                pass
+
+        arr = self.array
+        n_t, n_z = arr.shape[0], arr.shape[1]
+
+        fig, ax = plt.subplots()
+        plt.subplots_adjust(bottom=0.25)
+        im = ax.imshow(arr[0, 0], cmap="gray", vmin=arr.min(), vmax=arr.max())
+
+        ax_t = plt.axes([0.2, 0.12, 0.6, 0.03])
+        ax_z = plt.axes([0.2, 0.05, 0.6, 0.03])
+        s_t = Slider(ax_t, "Time", 0, max(n_t - 1, 1), valinit=0, valstep=1)
+        s_z = Slider(ax_z, "Z", 0, max(n_z - 1, 1), valinit=0, valstep=1)
+
+        def update(_):
+            t, z = int(s_t.val), int(s_z.val)
+            t = min(t, n_t - 1)
+            z = min(z, n_z - 1)
+            im.set_data(arr[t, z])
+            ax.set_title(f"t={t}, z={z}")
+            fig.canvas.draw_idle()
+
+        s_t.on_changed(update)
+        s_z.on_changed(update)
+        update(None)
+        # keep references so widgets are not garbage collected
+        self._sliders = (s_t, s_z)
+        plt.show()
+
+
+class Stack():
+    def __init__(self, array):
+
+        self.array = array
+        self.parent = None
+
+
+
+
 
 
 class Picture():
@@ -595,13 +655,13 @@ class Picture():
 
 
 class Segment:
-    def __init__(self, points: np.ndarray, parent_image: "Picture") -> None:
-        self.mask = np.zeros_like(parent_image.array, dtype=np.uint8)
+    def __init__(self, points: np.ndarray, parent: "Picture") -> None:
+        self.mask = np.zeros_like(parent.array, dtype=np.uint8)
         self.points = np.array(points)
         for point in points:
             # points are (x, y); mask indexing is [row, col] = [y, x]
             self.mask[point[1], point[0]] = 1
-        self.parent_image = parent_image
+        self.parent = parent
         # 0 means unassigned
         self.label = 0
         self.size = len(points)
@@ -612,7 +672,7 @@ class Segment:
 
         This makes segments from differently-cropped images comparable.
         """
-        offset_x, offset_y = self.parent_image.offset
+        offset_x, offset_y = self.parent.offset
         return self.points + np.array([offset_x, offset_y])
 
     def get_center_of_mass(self) -> np.ndarray:
@@ -628,7 +688,7 @@ class Segment:
 
     def get_mean_intensity(self) -> float:
         """Calculate the mean intensity of the segment within the parent image."""
-        return np.mean(self.parent_image.array[self.mask > 0])
+        return np.mean(self.parent.array[self.mask > 0])
 
     def display(self, details = "on top", annotate_label: bool = True) -> None:
         """Display the segment as an image."""
@@ -636,7 +696,7 @@ class Segment:
         color = plt.get_cmap('tab20')(self.label % 20)
 
         if details == "with original":
-            plt.imshow(self.parent_image.array, cmap='gray')
+            plt.imshow(self.parent.array, cmap='gray')
             plt.scatter(self.points[:, 0], self.points[:, 1], c=[color], s=1)
         if details == "mask only":
             plt.imshow(self.mask, cmap='gray')
@@ -648,7 +708,7 @@ class Segment:
             plt.imshow(self.mask, cmap='gray')
 
         # Also display center of mass as a blue cross (converted back to local/plot coordinates)
-        offset_x, offset_y = self.parent_image.offset
+        offset_x, offset_y = self.parent.offset
         center_of_mass = self.get_center_of_mass() - np.array([offset_x, offset_y])
         plt.scatter(center_of_mass[0], center_of_mass[1], c='blue', s=10, marker='x')
   
@@ -706,7 +766,7 @@ class Segment:
             # Re-rank every segment in this frame together (largest = label 1), including
             # this segment even if it hasn't been added to the parent image yet. id() breaks
             # ties between equally-sized segments so labels stay unique.
-            siblings = list(self.parent_image.segments)
+            siblings = list(self.parent.segments)
             if all(segment is not self for segment in siblings):
                 siblings.append(self)
             siblings.sort(key=lambda segment: (-segment.size, id(segment)))
@@ -716,7 +776,7 @@ class Segment:
 
         # Labels already claimed this frame (previously processed segments) or in the previous frame
         used_labels = [segment.label for segment in other_image.segments]
-        used_labels += [segment.label for segment in self.parent_image.segments if segment.label != 0]
+        used_labels += [segment.label for segment in self.parent.segments if segment.label != 0]
 
         max_overlap = 0
         best_match = None

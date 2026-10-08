@@ -59,6 +59,8 @@ def load_time_series(channel, run_number, path_to_folder: str):
     image_array.sort(key=lambda x: x.t)
     return image_array
 
+def load_stack(channel, run_number, path_to_folder ):
+    subfolder_name = None
 
 
 
