@@ -1,9 +1,8 @@
 # --- Data & images (excluded from version control) ---
 Data/
-Kode/image_export/
+Programming/image_export/
 Møder/
-Data/
-Kode/Arkiv/
+Programming/Arkiv/
 *.pptx
 *.png
 *.jpg

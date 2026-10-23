@@ -7,7 +7,7 @@ import os
 import re
 import napari
 import sys
-sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Kode\library")
+sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Programming\library")
 import CV_functions as CV_func
 
 # OLD VERSION OF CV_classes.py. HERE WE CAN LOAD IMAGES DIRECTLY FROM PATH. 
@@ -286,6 +286,68 @@ class Stack():
     def other(self):
         return None
 
+    def stack_image(self, step=1, spacing=0.12, squash=0.45, skew=0.6, width=300,
+                    color=(0, 255, 0), outline=True, save_path=None, show=True):
+        """Render the z-stack as slices drawn in perspective on top of each other.
+
+        Args:
+            step (int): Use every `step`-th slice.
+            spacing (float): Vertical offset between slices as a fraction of the slice height.
+            squash (float): Vertical compression of each slice (0-1).
+            skew (float): Horizontal shear of each slice, as a fraction of its height.
+            width (int): Width in pixels of each slice before the transform.
+            color (tuple): RGB colour of the intensity (e.g. (0, 255, 0) for green).
+            outline (bool): Draw a white border around each slice.
+            save_path (str): If given, save the image here.
+            show (bool): Show the image with matplotlib.
+
+        Returns:
+            np.ndarray: RGBA image (uint8).
+        """
+        arr = np.asarray(self.array)[::step].astype(np.float32)
+        lo, hi = np.percentile(arr, 1), np.percentile(arr, 99.8)
+        arr = np.clip((arr - lo) / max(hi - lo, 1e-9), 0, 1)
+
+        n, h, w = arr.shape
+        sw = width
+        sh = int(round(h * width / w))
+        ph = sh * squash
+        shear = skew * ph
+        dz = spacing * sh
+        out_w = int(np.ceil(sw + shear)) + 4
+        out_h = int(np.ceil(ph + dz * (n - 1))) + 4
+
+        # maps slice pixel (x, y) -> (x + shear*(1 - y/sh) + 2, y*squash + 2)
+        M = np.float32([[1, -shear / sh, shear + 2], [0, squash, 2]])
+        canvas = np.zeros((out_h, out_w, 4), np.float32)
+        rgb = np.array(color, np.float32) / 255.0
+
+        # draw the lowest slice (largest canvas offset) first, so upper slices cover it
+        for i in range(n):
+            img = cv2.resize(arr[i], (sw, sh), interpolation=cv2.INTER_AREA)
+            rgba = np.dstack([img[..., None] * rgb, np.ones((sh, sw), np.float32)])
+            if outline:
+                cv2.rectangle(rgba, (0, 0), (sw - 1, sh - 1), (1, 1, 1, 1), 2)
+
+            Mi = M.copy()
+            Mi[1, 2] += dz * (n - 1 - i)
+            warped = cv2.warpAffine(rgba, Mi, (out_w, out_h), flags=cv2.INTER_LINEAR,
+                                    borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+            a = warped[..., 3:4]
+            canvas[..., :3] = canvas[..., :3] * (1 - a) + warped[..., :3]
+            canvas[..., 3:4] = np.maximum(canvas[..., 3:4], a)
+
+        result = (np.clip(canvas, 0, 1) * 255).astype(np.uint8)
+
+        if save_path is not None:
+            Image.fromarray(result, "RGBA").save(save_path)
+        if show:
+            fig, ax = plt.subplots(figsize=(4, 6))
+            ax.imshow(result)
+            ax.axis("off")
+            plt.show()
+        return result
+
     def get_zproj(self, method="max"):
         """Get a z-projection of the stack.
 
@@ -349,6 +411,7 @@ class Picture():
         self.time = time
         self.z = z
         self.metadata = parent.metadata[z]
+        self.name = "undefined"
 
         # Things related to segments
 
@@ -463,7 +526,7 @@ class Picture():
         self.offset = (min_x, min_y)
 
 
-    def display(self, show_segments: bool = False, original: bool = False, name: str = None, show_axis: bool = True, show_colorbar: bool = True, show_data: bool = False) -> None:
+    def display(self, show_segments: bool = False, original: bool = False, name: str = None, show_axis: bool = True, show_colorbar: bool = True, show_data: bool = False, use_napari: bool = False) -> None:
         """Display the current image or the original image.
 
         Args:
@@ -478,20 +541,32 @@ class Picture():
         Returns:
             None: Opens a matplotlib figure window.
         """
-        if original:
-            plt.imshow(self.array_original, cmap='gray')
+        if use_napari:
+            import napari
+            viewer = napari.Viewer()
+            if original:
+                viewer.add_image(self.array_original, name=name if name is not None else f"{self.name} + Time = {self.time}")
+            else:
+                viewer.add_image(self.array, name=name if name is not None else f"{self.name} + Time = {self.time}")
+            if show_segments:
+                for segment in self.segments:
+                    segment.display(annotate_label=True, use_napari=True)
+            napari.run()
         else:
-            plt.imshow(self.array, cmap='gray')
-        plt.title(name if name is not None else f"{self.name} + Time = {self.t}")
-        if not show_axis:
-            plt.axis('off')
-        if show_data:
-            plt.text(0, 0, f"Average: {self.average(original=original):.2f}", ha='left', va='top', color='red')
-        if show_colorbar:
-            plt.colorbar()
-        if show_segments:
-            for segment in self.segments:
-                segment.display(annotate_label=True)
+            if original:
+                plt.imshow(self.array_original, cmap='gray')
+            else:
+                plt.imshow(self.array, cmap='gray')
+            plt.title(name if name is not None else f"{self.name} + Time = {self.time}")
+            if not show_axis:
+                plt.axis('off')
+            if show_data:
+                plt.text(0, 0, f"Average: {self.average(original=original):.2f}", ha='left', va='top', color='red')
+            if show_colorbar:
+                plt.colorbar()
+            if show_segments:
+                for segment in self.segments:
+                    segment.display(annotate_label=True)
 
     def reset(self, all = False):
         """Reset the current image array to the original image array.
@@ -865,8 +940,14 @@ class Segment:
         """Calculate the mean intensity of the segment within the parent image."""
         return np.mean(self.parent.array[self.mask > 0])
 
-    def display(self, details = "on top", annotate_label: bool = True) -> None:
-        """Display the segment as an image."""
+    def display(self, details = "on top", annotate_label: bool = True, use_napari: bool = False) -> None:
+        """Display the segment as an image.
+
+        Args:
+            details (str): How to display the segment. Options are "with original", "mask only", "on top".
+            annotate_label (bool): Whether to annotate the segment's label.
+            use_napari (bool): Whether to use Napari for display. If False, uses matplotlib.
+        """
         # tab20 has 20 distinct colors, cycle through them based on the label
         color = plt.get_cmap('tab20')(self.label % 20)
 
@@ -879,8 +960,13 @@ class Segment:
             plt.scatter(self.points[:, 0], self.points[:, 1], c=[color], s=1)
 
         else:
-            
-            plt.imshow(self.mask, cmap='gray')
+            if use_napari:
+                import napari
+                viewer = napari.Viewer()
+                viewer.add_image(self.mask, name="Mask")
+                napari.run()
+            else:
+                plt.imshow(self.mask, cmap='gray')
 
         # Also display center of mass as a blue cross (converted back to local/plot coordinates)
         offset_x, offset_y = self.parent.offset

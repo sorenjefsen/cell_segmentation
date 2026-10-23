@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import sys
-sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Kode\library")
+sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Programming\library")
 import CV_classes as CV_class
 
 

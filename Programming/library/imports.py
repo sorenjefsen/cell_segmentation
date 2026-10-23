@@ -13,7 +13,7 @@ import cv2
 
 sys.path.append(r"C:\Users\sjefs\Desktop\Uni\Speciale\Kode\library")
 import CV_functions as CV_func
-import CV_classes as CV_class
+import Kode.library.CV_classes_old as CV_class
 from PIL import Image
 from PIL.TiffTags import TAGS
 import matplotlib.pyplot as plt
